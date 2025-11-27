@@ -1,8 +1,8 @@
-# food-del
+# FoodECommerce
 
 ## Project Description
 
-**food-del** is a full-stack food delivery management system designed for restaurants and delivery businesses. The project includes:
+**FoodECommerce** is a full-stack food delivery management system designed for restaurants and delivery businesses. The project includes:
 
 - **Admin Dashboard**: A React-based web interface for managing orders, viewing customer details, updating order statuses, and tracking delivery progress. Admins can view all incoming orders, update their status (e.g., Food Processing, Out for Delivery, Delivered), and see detailed customer and order information.
 
