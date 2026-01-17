@@ -11,35 +11,80 @@ const RecommendedFood = () => {
     const [loading, setLoading] = useState(true)
     const [sessionId] = useState(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`)
 
-    // Get user ID from token (if available)
+    // Get user ID from context or generate guest ID
     const getUserId = () => {
         if (token) {
             try {
-                // In a real app, decode JWT token to get user ID
-                // For now, use a simple approach
-                return `user_${Date.now()}`;
+                // Decode JWT token to get actual user ID
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const payload = JSON.parse(window.atob(base64));
+                return payload.id || payload.userId || `user_${Date.now()}`;
             } catch (error) {
-                console.error('Error getting user ID:', error);
+                console.error('Error decoding token:', error);
+                return `user_${Date.now()}`;
             }
         }
-        return `guest_${Date.now()}`;
+        // For guests, use consistent ID based on session
+        const guestId = localStorage.getItem('guestId');
+        if (guestId) {
+            return guestId;
+        }
+        const newGuestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('guestId', newGuestId);
+        return newGuestId;
     };
 
-    // Get smart recommendations using local logic
+    // Get smart recommendations using ML model
     const fetchRecommendations = async () => {
         try {
             setLoading(true);
-            getSmartRecommendations();
+            
+            // Call Python ML recommendation API
+            const userId = getUserId();
+            const response = await axios.post('http://localhost:8000/recommend', {
+                user_id: userId,
+                count: 8,
+                session_id: sessionId
+            });
+            
+            if (response.data.success && response.data.recommendations) {
+                // Map recommendations to food items from food_list
+                const mlRecommendations = response.data.recommendations
+                    .map(rec => {
+                        const foodItem = food_list.find(f => f._id === rec.food_id || f.name.toLowerCase() === rec.name.toLowerCase());
+                        if (foodItem) {
+                            return {
+                                ...foodItem,
+                                ml_score: rec.score,
+                                explanation: rec.explanation
+                            };
+                        }
+                        return null;
+                    })
+                    .filter(item => item !== null);
+                
+                if (mlRecommendations.length > 0) {
+                    setRecommendedItems(mlRecommendations);
+                    console.log('✅ ML Recommendations loaded:', mlRecommendations.length);
+                    return;
+                }
+            }
+            
+            // Fallback if ML service fails
+            console.log('⚠️ ML service unavailable, using fallback');
+            getFallbackRecommendations();
+            
         } catch (error) {
-            console.log('Error getting recommendations:', error.message);
+            console.log('⚠️ Error getting ML recommendations:', error.message);
             getFallbackRecommendations();
         } finally {
             setLoading(false);
         }
     };
 
-    // Smart recommendation logic based on time, variety, and appetite patterns
-    const getSmartRecommendations = () => {
+    // Fallback: Smart recommendation logic based on time (used if ML service is down)
+    const getFallbackRecommendations = () => {
         const currentHour = new Date().getHours();
         const isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
         
@@ -106,12 +151,6 @@ const RecommendedFood = () => {
         }
 
         setRecommendedItems(selectedItems.slice(0, 8));
-    };
-
-    // Simple fallback if smart recommendations fail
-    const getFallbackRecommendations = () => {
-        const shuffled = [...food_list].sort(() => 0.5 - Math.random());
-        setRecommendedItems(shuffled.slice(0, 8));
     };
 
     // Track click on recommended item (simplified)

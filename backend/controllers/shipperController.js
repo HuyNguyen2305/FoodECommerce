@@ -214,6 +214,9 @@ const assignOrder = async (req, res) => {
     const { shipper_id, order_id } = req.body;
     
     try {
+        const orderModel = (await import('../models/orderModel.js')).default;
+        
+        // Find and update shipper
         const shipper = await shipperModel.findOneAndUpdate(
             { shipper_id, status: 'available' },
             { 
@@ -226,6 +229,17 @@ const assignOrder = async (req, res) => {
         if (!shipper) {
             return res.json({ success: false, message: "Shipper not available" });
         }
+
+        // Update order with assignment details (including shipper location for learning)
+        await orderModel.findByIdAndUpdate(order_id, {
+            assigned_shipper: shipper._id,
+            shipper_status: 'assigned',
+            assignment_time: new Date(),
+            shipper_location: {
+                lat: shipper.current_location.lat,
+                lon: shipper.current_location.lon
+            }
+        });
 
         res.json({ success: true, message: "Order assigned", shipper });
     } catch (error) {

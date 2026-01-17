@@ -16,18 +16,56 @@ class RecommendationController {
     async getRecommendations(req, res) {
         try {
             const { userId } = req.params;
-            const { count = 8, sessionId } = req.body;
+            const { count = 8, sessionId, hour } = req.body;
 
-            if (!userId) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'User ID is required'
-                });
+            // Handle neutral users (no login) - use cold start recommendations
+            if (!userId || userId === 'null' || userId === 'undefined') {
+                console.log(`Getting cold-start recommendations for neutral user, count: ${count}`);
+                
+                try {
+                    const currentHour = hour || new Date().getHours();
+                    const mlResponse = await axios.get(`${this.mlServiceUrl}/content-based/cold-start`, {
+                        params: {
+                            count: parseInt(count),
+                            hour: currentHour
+                        },
+                        timeout: ML_SERVICE_TIMEOUT,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    const recommendations = mlResponse.data;
+
+                    if (recommendations.success) {
+                        console.log(`Cold-start ML service returned ${recommendations.count} recommendations`);
+                        return res.json({
+                            success: true,
+                            recommendations: recommendations.recommendations,
+                            strategy: recommendations.strategy,
+                            hour: recommendations.hour,
+                            message: 'Time-based recommendations for you',
+                            isNeutralUser: true
+                        });
+                    }
+                } catch (mlError) {
+                    console.log('Cold-start ML service unavailable:', mlError.message);
+                    // Fallback to Node.js time-based recommendations
+                    const fallbackRecommendations = await this.getFallbackRecommendations(count);
+                    return res.json({
+                        success: true,
+                        recommendations: fallbackRecommendations,
+                        fallback: true,
+                        message: 'Recommendations based on current time',
+                        isNeutralUser: true,
+                        context: { meal_time: this.getCurrentMealTime() }
+                    });
+                }
             }
 
-            console.log(`Getting recommendations for user: ${userId}, count: ${count}`);
+            console.log(`Getting personalized recommendations for user: ${userId}, count: ${count}`);
 
-            // Try Python ML service first
+            // Try Python ML service for logged-in users
             try {
                 const mlResponse = await axios.post(`${this.mlServiceUrl}/recommend`, {
                     user_id: userId,
@@ -48,7 +86,8 @@ class RecommendationController {
                         success: true,
                         recommendations: recommendations.recommendations,
                         context: recommendations.context,
-                        message: `Got ${recommendations.count} AI-powered recommendations`
+                        message: `Got ${recommendations.count} AI-powered recommendations`,
+                        isNeutralUser: false
                     });
                 }
             } catch (mlError) {

@@ -49,7 +49,7 @@ class ShipperDispatcher:
                 start_lon=shipper_location['lon'],
                 end_lat=shop_location['lat'],
                 end_lon=shop_location['lon'],
-                use_learned_patterns=False
+                use_learned_patterns=True  # Enable learning!
             )
             return route
         except Exception as e:
@@ -82,18 +82,20 @@ class ShipperDispatcher:
     def find_nearest_shipper(self, 
                             shop_location: Dict,
                             available_shippers: List[Dict] = None,
+                            customer_location: Dict = None,
                             max_distance_km: float = 10.0) -> Optional[Dict]:
         """
-        Find the nearest available shipper to shop using Dijkstra algorithm
+        Find the BEST shipper using smart assignment algorithm
         
-        This is the core dispatch logic that:
-        1. Calculates routes from ALL available shippers to the shop
-        2. Uses YOUR A* algorithm (which is similar to Dijkstra) to find actual road distances
-        3. Selects the shipper with shortest travel time
+        Now considers:
+        1. Total predicted delivery time (not just distance)
+        2. Shipper performance multipliers
+        3. Learned delivery zone patterns
         
         Args:
             shop_location: {'lat': float, 'lon': float} - Restaurant pickup location
-            available_shippers: List of shipper dicts with 'current_location' (if None, will load from file)
+            available_shippers: List of shipper dicts with 'current_location'
+            customer_location: {'lat': float, 'lon': float} - Final delivery destination
             max_distance_km: Maximum acceptable distance in kilometers
             
         Returns:
@@ -108,49 +110,94 @@ class ShipperDispatcher:
             return None
         
         start_time = time.time()
-        logger.info(f"Finding nearest shipper among {len(available_shippers)} candidates")
         
-        # Calculate routes to all shippers (Dijkstra approach - test all paths)
-        shipper_routes = []
+        # Import route memory for smart assignment
+        from route_memory import get_route_memory
+        route_memory = get_route_memory()
+        
+        logger.info(f"Finding optimal shipper among {len(available_shippers)} candidates (SMART MODE)")
+        
+        # Calculate routes to all shippers with smart scoring
+        shipper_scores = []
         
         for shipper in available_shippers:
             shipper_location = shipper['current_location']
+            shipper_id = shipper.get('shipper_id', shipper.get('_id'))
             
-            # Calculate route using YOUR A* algorithm
+            # Calculate route: shipper → shop
             route_info = self.calculate_distance_to_shipper(shop_location, shipper_location)
             
-            if route_info and route_info.get('success'):
-                route = route_info['route']
+            if not route_info or not route_info.get('success'):
+                continue
+            
+            route = route_info['route']
+            distance_km = route['distance_meters'] / 1000.0
+            
+            # Check distance constraint
+            if distance_km > max_distance_km:
+                continue
+            
+            # Get shipper speed multiplier
+            shipper_multiplier = route_memory.get_shipper_multiplier(shipper_id)
+            
+            # Calculate pickup time (shipper → shop) with shipper multiplier
+            pickup_time = route['estimated_time_seconds'] * shipper_multiplier
+            
+            # Calculate delivery time (shop → customer)
+            delivery_time = 0
+            if customer_location:
+                # Check if we have learned pattern for this delivery zone
+                learned_delivery_time = route_memory.get_delivery_zone_time(
+                    customer_location['lat'],
+                    customer_location['lon']
+                )
                 
-                # Check distance constraint
-                distance_km = route['distance_meters'] / 1000.0
-                if distance_km <= max_distance_km:
-                    shipper_routes.append({
-                        'shipper': shipper,
-                        'route': route,
-                        'distance_km': distance_km,
-                        'eta_seconds': route['estimated_time_seconds'],
-                        'eta_minutes': round(route['estimated_time_seconds'] / 60.0, 1)
-                    })
+                if learned_delivery_time:
+                    # Use learned time with shipper multiplier
+                    delivery_time = learned_delivery_time * shipper_multiplier
+                else:
+                    # Calculate fresh route
+                    delivery_route = self.router.calculate_route(
+                        shop_location['lat'], shop_location['lon'],
+                        customer_location['lat'], customer_location['lon'],
+                        use_learned_patterns=True
+                    )
+                    if delivery_route.get('success'):
+                        delivery_time = delivery_route['route']['estimated_time_seconds'] * shipper_multiplier
+            
+            # Total predicted time
+            total_time = pickup_time + delivery_time
+            
+            shipper_scores.append({
+                'shipper': shipper,
+                'route': route,
+                'distance_km': distance_km,
+                'pickup_eta_seconds': pickup_time,
+                'delivery_eta_seconds': delivery_time,
+                'total_eta_seconds': total_time,
+                'total_eta_minutes': round(total_time / 60.0, 1),
+                'shipper_speed_multiplier': shipper_multiplier,
+                'assignment_score': total_time  # Lower is better
+            })
         
-        if not shipper_routes:
+        if not shipper_scores:
             logger.warning(f"No shippers within {max_distance_km}km of shop")
             return None
         
-        # Sort by travel time (fastest first) - This is the Dijkstra selection
-        # We've calculated all paths, now pick the shortest one
-        shipper_routes.sort(key=lambda x: x['eta_seconds'])
+        # Sort by total time (SMART ASSIGNMENT - not just distance!)
+        shipper_scores.sort(key=lambda x: x['assignment_score'])
         
-        best_match = shipper_routes[0]
+        best_match = shipper_scores[0]
         
         calc_time = time.time() - start_time
         
         logger.info(
-            f"Found nearest shipper: {best_match['shipper']['shipper_id']} "
+            f"✅ SMART ASSIGNMENT: {best_match['shipper']['shipper_id']} "
             f"({best_match['shipper']['name']}) - "
-            f"{best_match['distance_km']:.2f}km, "
-            f"ETA: {best_match['eta_minutes']} min "
-            f"(calculated in {calc_time:.2f}s)"
+            f"Pickup: {best_match['distance_km']:.2f}km, "
+            f"Total ETA: {best_match['total_eta_minutes']:.1f}min "
+            f"(Speed: {best_match['shipper_speed_multiplier']:.2f}x) "
+            f"[{calc_time:.2f}s]"
         )
         
         return best_match
@@ -178,8 +225,12 @@ class ShipperDispatcher:
         
         logger.info(f"Assigning order {order_id}")
         
-        # Step 1: Find nearest shipper to shop
-        nearest = self.find_nearest_shipper(shop_location, available_shippers)
+        # Step 1: Find best shipper using smart assignment (considers total time)
+        nearest = self.find_nearest_shipper(
+            shop_location, 
+            available_shippers,
+            customer_location=customer_location  # Pass customer location for smart scoring
+        )
         
         if not nearest:
             logger.error(f"Failed to assign order {order_id} - no suitable shipper")
@@ -205,17 +256,22 @@ class ShipperDispatcher:
                 'coordinates': nearest['route']['coordinates'],
                 'distance_meters': nearest['route']['distance_meters'],
                 'distance_km': nearest['distance_km'],
-                'eta_seconds': nearest['route']['estimated_time_seconds'],
-                'eta_minutes': nearest['eta_minutes']
+                'eta_seconds': nearest['pickup_eta_seconds'],
+                'eta_minutes': round(nearest['pickup_eta_seconds'] / 60.0, 1)
             },
             
             # Route from shop to customer (delivery) - for display only
             'route_to_customer': {
-                'distance_meters': shop_to_customer['route']['distance_meters'],
-                'distance_km': round(shop_to_customer['route']['distance_meters'] / 1000.0, 2),
-                'eta_seconds': shop_to_customer['route']['estimated_time_seconds'],
-                'eta_minutes': round(shop_to_customer['route']['estimated_time_seconds'] / 60.0, 1)
-            } if shop_to_customer.get('success') else None,
+                'distance_meters': shop_to_customer['route']['distance_meters'] if shop_to_customer.get('success') else None,
+                'distance_km': round(shop_to_customer['route']['distance_meters'] / 1000.0, 2) if shop_to_customer.get('success') else None,
+                'eta_seconds': nearest.get('delivery_eta_seconds', 0),
+                'eta_minutes': round(nearest.get('delivery_eta_seconds', 0) / 60.0, 1)
+            },
+            
+            # Smart assignment metadata
+            'total_eta_seconds': nearest['total_eta_seconds'],
+            'total_eta_minutes': nearest['total_eta_minutes'],
+            'shipper_speed_multiplier': nearest['shipper_speed_multiplier'],
             
             'shop_location': shop_location,
             'customer_location': customer_location,
@@ -225,7 +281,7 @@ class ShipperDispatcher:
         
         logger.info(
             f"✅ Order {order_id} assigned to {assignment['shipper_name']} "
-            f"(Pickup: {assignment['route_to_shop']['eta_minutes']}min)"
+            f"(Total ETA: {assignment['total_eta_minutes']:.1f}min, Speed: {nearest['shipper_speed_multiplier']:.2f}x)"
         )
         
         return assignment

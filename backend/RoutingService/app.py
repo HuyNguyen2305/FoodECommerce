@@ -298,6 +298,155 @@ def update_shipper_status():
         logger.error(f"Error updating shipper status: {e}")
         return jsonify({'error': str(e)}), 500
 
+# ============================================
+# LEARNING ENDPOINTS
+# ============================================
+
+@app.route('/learning/record-delivery', methods=['POST'])
+def record_delivery_completion():
+    """
+    Record completed delivery for learning (called by Node.js backend)
+    
+    Request body:
+    {
+        "order_id": "123",
+        "shipper_id": "SH001",
+        "shipper_location": {"lat": 10.7700, "lon": 106.7000},
+        "shop_location": {"lat": 10.7769, "lon": 106.7009},
+        "customer_location": {"lat": 10.7829, "lon": 106.6958},
+        "assignment_time": "2026-01-17T10:00:00Z",
+        "delivery_time": "2026-01-17T10:15:00Z",
+        "estimated_time_seconds": 720
+    }
+    """
+    if router is None:
+        return jsonify({'error': 'Router not initialized'}), 500
+    
+    try:
+        data = request.json
+        
+        # Parse timestamps
+        from datetime import datetime
+        assignment_time = datetime.fromisoformat(data['assignment_time'].replace('Z', '+00:00'))
+        delivery_time = datetime.fromisoformat(data['delivery_time'].replace('Z', '+00:00'))
+        
+        # Calculate actual delivery time
+        actual_time_seconds = (delivery_time - assignment_time).total_seconds()
+        
+        # Get locations
+        shipper_loc = data.get('shipper_location', {})
+        shop_loc = data['shop_location']
+        customer_loc = data['customer_location']
+        shipper_id = data.get('shipper_id')
+        estimated_time = data.get('estimated_time_seconds')
+        
+        # Get route memory for enhanced learning
+        from route_memory import get_route_memory
+        from context_utils import get_time_context
+        route_memory = get_route_memory()
+        
+        # Get time context
+        context = get_time_context(delivery_time)
+        
+        # 1. Record basic route learning (shop → customer)
+        router.record_actual_delivery(
+            start_lat=shop_loc['lat'],
+            start_lon=shop_loc['lon'],
+            end_lat=customer_loc['lat'],
+            end_lon=customer_loc['lon'],
+            actual_time_seconds=actual_time_seconds,
+            estimated_time_seconds=estimated_time,
+            timestamp=delivery_time
+        )
+        
+        # 2. Learn delivery zone pattern (shop → customer zones)
+        route_memory.update_delivery_zone_pattern(
+            customer_lat=customer_loc['lat'],
+            customer_lon=customer_loc['lon'],
+            actual_time_seconds=actual_time_seconds,
+            context=context
+        )
+        
+        # 3. Learn shipper performance (if we have shipper data)
+        if shipper_id and estimated_time:
+            route_memory.update_shipper_performance(
+                shipper_id=shipper_id,
+                estimated_time=estimated_time,
+                actual_time=actual_time_seconds
+            )
+        
+        # 4. Learn complete journey (if we have shipper location)
+        if shipper_loc.get('lat') and shipper_loc.get('lon'):
+            route_memory.update_complete_journey(
+                shipper_lat=shipper_loc['lat'],
+                shipper_lon=shipper_loc['lon'],
+                customer_lat=customer_loc['lat'],
+                customer_lon=customer_loc['lon'],
+                total_time_seconds=actual_time_seconds,
+                context=context
+            )
+        
+        logger.info(
+            f"📚 Learned from order {data.get('order_id')}: "
+            f"{actual_time_seconds:.0f}s actual vs {estimated_time:.0f}s estimated "
+            f"(Shipper: {shipper_id}, Context: {context})"
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'Delivery data recorded for learning',
+            'actual_time_seconds': actual_time_seconds,
+            'estimated_time_seconds': estimated_time,
+            'accuracy_delta': abs(actual_time_seconds - estimated_time) if estimated_time else None,
+            'learning_applied': {
+                'route_memory': True,
+                'delivery_zone': True,
+                'shipper_performance': bool(shipper_id),
+                'complete_journey': bool(shipper_loc.get('lat')),
+                'context': context
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error recording delivery: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/learning/stats', methods=['GET'])
+def get_learning_statistics():
+    """Get learning performance statistics"""
+    if router is None:
+        return jsonify({'error': 'Router not initialized'}), 500
+    
+    try:
+        stats = router.get_learning_stats()
+        return jsonify({
+            'success': True,
+            'statistics': stats,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/learning/cleanup', methods=['POST'])
+def cleanup_old_routes():
+    """Clean up old unused routes"""
+    if router is None:
+        return jsonify({'error': 'Router not initialized'}), 500
+    
+    try:
+        days = request.json.get('days_unused', 30) if request.json else 30
+        deleted = router.route_memory.cleanup_old_routes(days)
+        
+        return jsonify({
+            'success': True,
+            'routes_deleted': deleted,
+            'message': f'Cleaned up {deleted} routes older than {days} days'
+        })
+    except Exception as e:
+        logger.error(f"Error cleaning up routes: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Initialize routing service before starting server
     initialize_routing_service()

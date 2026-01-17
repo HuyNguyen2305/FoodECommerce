@@ -3,7 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "forceConsistentCasingInFileNames": true,
     "paths": {
       "@/*": [
         "./*"

@@ -282,7 +282,37 @@ const updateShipperStatus = async (req, res) => {
             updateData.status = 'Delivered'; // Also update main order status
         }
         
-        await orderModel.findByIdAndUpdate(orderId, updateData);
+        const order = await orderModel.findByIdAndUpdate(orderId, updateData, { new: true });
+        
+        // LEARNING: Send feedback to routing service when delivery completes
+        if (shipper_status === 'delivered' && order.assignment_time && order.shop_location && order.customer_location) {
+            try {
+                const routingServiceUrl = process.env.ROUTING_SERVICE_URL || 'http://localhost:5001';
+                
+                // Prepare shipper location data (if available from order)
+                const shipperLocation = order.shipper_location || null;
+                const shipperId = order.assigned_shipper || null;
+                
+                await axios.post(`${routingServiceUrl}/learning/record-delivery`, {
+                    order_id: orderId,
+                    shipper_id: shipperId,
+                    shipper_location: shipperLocation,  // Pass shipper starting location
+                    shop_location: order.shop_location,
+                    customer_location: order.customer_location,
+                    assignment_time: order.assignment_time.toISOString(),
+                    delivery_time: updateData.delivery_time.toISOString(),
+                    estimated_time_seconds: order.estimated_time_seconds
+                }, {
+                    timeout: 3000  // Don't block order completion if learning service is slow
+                });
+                
+                console.log(`✅ Delivery feedback sent to learning service for order ${orderId} (Shipper: ${shipperId})`);
+            } catch (learningError) {
+                // Don't fail the order update if learning service is unavailable
+                console.warn(`⚠️ Could not send learning feedback: ${learningError.message}`);
+            }
+        }
+        
         res.json({ success: true, message: "Order status updated successfully" });
     } catch (error) {
         console.log(error);

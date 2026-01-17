@@ -539,6 +539,8 @@ class ContentBasedRecommender:
         Returns:
             List of time-appropriate food recommendations
         """
+        from database import get_food_database
+        
         if current_hour is None:
             current_hour = datetime.now().hour
         
@@ -564,14 +566,23 @@ class ContentBasedRecommender:
             if predicted_category == target_meal:
                 meal_appropriate_foods.append(food)
         
-        # Rank by simple popularity score (you could use rating, order count, etc.)
-        # For now, we'll use a mock popularity score
+        # Rank by real popularity from database instead of mock data
+        db = get_food_database()
         for food in meal_appropriate_foods:
-            # Mock popularity based on price (lower price = more popular) + randomization
-            base_popularity = 100 - (food.get('price', 50) * 0.5)
-            food['popularity_score'] = max(0, base_popularity + np.random.normal(0, 10))
+            food_id = str(food.get('_id'))
+            stats = db.get_interaction_stats(food_id)
+            
+            # Calculate real popularity score based on orders and ratings
+            order_count = stats.get('orders', 0)
+            avg_rating = stats.get('avg_rating', 3.5)
+            
+            # Weighted popularity: 70% orders, 30% rating
+            popularity_score = (order_count * 0.7) + (avg_rating * 6 * 0.3)
+            food['popularity_score'] = popularity_score
+            food['order_count'] = order_count
+            food['avg_rating'] = avg_rating
         
-        # Sort by popularity and take top N
+        # Sort by real popularity and take top N
         meal_appropriate_foods.sort(key=lambda x: x.get('popularity_score', 0), reverse=True)
         top_foods = meal_appropriate_foods[:top_n]
         
@@ -579,11 +590,22 @@ class ContentBasedRecommender:
         recommendations = []
         for food in top_foods:
             food_copy = food.copy()
-            food_copy['recommendation_reason'] = f"Popular {target_meal} choice"
+            order_count = food_copy.get('order_count', 0)
+            
+            # More descriptive reason based on actual data
+            if order_count >= 50:
+                food_copy['recommendation_reason'] = f"Bestseller for {target_meal}"
+            elif order_count >= 20:
+                food_copy['recommendation_reason'] = f"Popular {target_meal} choice"
+            elif order_count >= 5:
+                food_copy['recommendation_reason'] = f"Recommended for {target_meal}"
+            else:
+                food_copy['recommendation_reason'] = f"Perfect for {target_meal}"
+            
             food_copy['meal_category'] = target_meal
             recommendations.append(food_copy)
         
-        logger.info(f"Generated {len(recommendations)} cold-start recommendations for {target_meal}")
+        logger.info(f"Generated {len(recommendations)} cold-start recommendations for {target_meal} using real order data")
         return recommendations
 
     def reset_model_state(self):

@@ -14,6 +14,11 @@ const orderSchema = new mongoose.Schema({
     assignment_time: {type: Date, default: null},
     pickup_time: {type: Date, default: null},
     delivery_time: {type: Date, default: null},
+    // Shipper starting location (for learning complete journey)
+    shipper_location: {
+        lat: {type: Number, default: null},
+        lon: {type: Number, default: null}
+    },
     // Route information
     shop_location: {
         lat: {type: Number, default: 10.7769},
