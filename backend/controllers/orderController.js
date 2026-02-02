@@ -320,16 +320,44 @@ const updateShipperStatus = async (req, res) => {
     }
 }
 
+// Reject order (shipper declines the assignment)
+const rejectOrder = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+
+        // Reset order to pending status and remove shipper assignment
+        const order = await orderModel.findByIdAndUpdate(
+            orderId,
+            {
+                shipper_status: 'pending',
+                assigned_shipper: null,
+                assignment_time: null
+            },
+            { new: true }
+        );
+
+        if (!order) {
+            return res.json({ success: false, message: "Order not found" });
+        }
+
+        console.log(`📤 Order ${orderId} rejected and returned to pending pool`);
+        res.json({ success: true, message: "Order rejected successfully" });
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: "Error rejecting order" });
+    }
+}
+
 // Get order by ID (for shipper to view details)
 const getOrderById = async (req, res) => {
     try {
         const { orderId } = req.params;
         const order = await orderModel.findById(orderId);
-        
+
         if (!order) {
             return res.json({ success: false, message: "Order not found" });
         }
-        
+
         res.json({ success: true, order });
     } catch (error) {
         console.log(error);
@@ -337,4 +365,4 @@ const getOrderById = async (req, res) => {
     }
 }
 
-export { placeOrder, verifyOrder, userOrders, listOrders, updateStatus, getShipperOrders, updateShipperStatus, getOrderById };
+export { placeOrder, verifyOrder, userOrders, listOrders, updateStatus, getShipperOrders, updateShipperStatus, rejectOrder, getOrderById };

@@ -216,15 +216,23 @@ class FoodDatabase:
             ratings = []
             
             # Aggregate orders containing this food item
-            orders = list(self.db.orders.find({'items.foodId': food_object_id}))
+            # Items can have either 'foodId' or '_id' field
+            orders = list(self.db.orders.find({
+                '$or': [
+                    {'items.foodId': food_object_id},
+                    {'items._id': food_object_id}
+                ]
+            }))
             
             for order in orders:
                 for item in order.get('items', []):
                     # Handle both ObjectId and string comparisons
-                    item_food_id = item.get('foodId')
-                    if str(item_food_id) == str(food_object_id):
-                        order_count += 1
-                        total_quantity += item.get('quantity', 1)
+                    # Check both 'foodId' and '_id' fields
+                    item_food_id = item.get('foodId') or item.get('_id')
+                    if item_food_id and str(item_food_id) == str(food_object_id):
+                        quantity = item.get('quantity', 1)
+                        order_count += quantity  # Count total quantity ordered, not just orders
+                        total_quantity += quantity
                         
                         # Extract rating if available
                         if 'rating' in item and item['rating'] > 0:

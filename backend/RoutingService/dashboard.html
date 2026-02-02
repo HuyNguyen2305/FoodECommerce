@@ -285,7 +285,7 @@
             </div>
 
             <div class="controls">
-                <button class="btn btn-primary" onclick="refreshShippers()">Refresh Shippers</button>
+                <button class="btn btn-primary" onclick="refreshAndRandomize()">Refresh & Randomize</button>
                 <button class="btn btn-secondary" onclick="generateNewShippers()">Generate New Shippers</button>
                 <button class="btn btn-secondary" onclick="testDispatch()">Test Dispatch</button>
             </div>
@@ -447,6 +447,30 @@
             await loadShippers();
         }
 
+        async function refreshAndRandomize() {
+            console.log('Refreshing shippers and randomizing locations...');
+            
+            try {
+                // First, randomize all shipper locations
+                const response = await fetch('/dispatch/randomize-locations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        console.log(`Randomized ${data.count} shipper locations`);
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not randomize locations:', error);
+            }
+            
+            // Then reload the shipper list with new positions
+            await loadShippers();
+        }
+
         async function generateNewShippers() {
             if (confirm('Generate 20 new random shippers?')) {
                 try {
@@ -512,9 +536,6 @@
         // Initialize
         addShopMarker();
         loadShippers();
-
-        // Auto-refresh every 30 seconds
-        setInterval(refreshShippers, 30000);
     </script>
 </body>
 </html>

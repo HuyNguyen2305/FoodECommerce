@@ -294,6 +294,154 @@ const updateRating = async (req, res) => {
     }
 }
 
+// Generate random test shippers for development/testing
+const generateRandomShippers = async (req, res) => {
+    const { count = 20 } = req.body;
+    
+    try {
+        // Vietnamese names for random generation
+        const firstNames = ['Nguyen', 'Tran', 'Le', 'Pham', 'Hoang', 'Huynh', 'Vo', 'Dang', 'Bui', 'Do'];
+        const lastNames = ['Van', 'Thi', 'Minh', 'Thanh', 'Van', 'Duc', 'Ngoc', 'Quoc', 'Hong', 'Kim'];
+        const middleNames = ['An', 'Binh', 'Cuong', 'Dung', 'Hai', 'Khanh', 'Linh', 'Nam', 'Phong', 'Tuan'];
+        
+        // Ho Chi Minh City area bounds
+        const centerLat = 10.7769;
+        const centerLon = 106.7009;
+        const radius = 0.1; // ~11km radius
+        
+        const areas = [
+            'District 1', 'District 3', 'District 5', 'District 7', 
+            'Binh Thanh', 'Phu Nhuan', 'Tan Binh', 'Go Vap'
+        ];
+        
+        // Default password for test shippers
+        const defaultPassword = 'shipper123';
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(defaultPassword, salt);
+        
+        const generatedShippers = [];
+        let successCount = 0;
+        
+        for (let i = 0; i < count; i++) {
+            try {
+                // Generate random name
+                const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+                const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+                const middleName = middleNames[Math.floor(Math.random() * middleNames.length)];
+                const name = `${firstName} ${lastName} ${middleName}`;
+                
+                // Generate shipper ID
+                const shipper_id = await generateShipperId();
+                
+                // Generate random location within Ho Chi Minh City
+                const lat = centerLat + (Math.random() - 0.5) * radius;
+                const lon = centerLon + (Math.random() - 0.5) * radius;
+                
+                // Generate unique email and phone
+                const email = `${shipper_id.toLowerCase()}@shipper.test`;
+                const phone = `0${Math.floor(300000000 + Math.random() * 600000000)}`;
+                
+                // Random area
+                const area = areas[Math.floor(Math.random() * areas.length)];
+                
+                // Random status (mostly available for testing)
+                const statuses = ['available', 'available', 'available', 'busy', 'offline'];
+                const status = statuses[Math.floor(Math.random() * statuses.length)];
+                
+                // Create shipper
+                const newShipper = new shipperModel({
+                    shipper_id,
+                    name,
+                    email,
+                    phone,
+                    password: hashedPassword,
+                    current_location: { lat, lon },
+                    area,
+                    status,
+                    rating: 4.5 + Math.random() * 0.5, // 4.5-5.0
+                    total_deliveries: Math.floor(Math.random() * 100),
+                    vehicle_type: 'motorcycle'
+                });
+                
+                await newShipper.save();
+                generatedShippers.push({
+                    shipper_id,
+                    name,
+                    email,
+                    area,
+                    status
+                });
+                successCount++;
+                
+            } catch (error) {
+                console.log(`Error generating shipper ${i + 1}:`, error.message);
+            }
+        }
+        
+        res.json({ 
+            success: true, 
+            message: `Generated ${successCount} random shippers`,
+            count: successCount,
+            shippers: generatedShippers,
+            note: 'Default password for all test shippers: shipper123'
+        });
+        
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: "Error generating shippers" });
+    }
+}
+
+// Randomize shipper locations (for testing dispatch system)
+const randomizeShipperLocations = async (req, res) => {
+    try {
+        // Ho Chi Minh City area bounds
+        const centerLat = 10.7769;
+        const centerLon = 106.7009;
+        const radius = 0.1; // ~11km radius
+        
+        // Get all active shippers
+        const shippers = await shipperModel.find({ is_active: true });
+        
+        if (shippers.length === 0) {
+            return res.json({ 
+                success: false, 
+                message: "No active shippers found" 
+            });
+        }
+        
+        let updatedCount = 0;
+        
+        // Update each shipper with a new random location
+        for (const shipper of shippers) {
+            try {
+                // Generate random location within Ho Chi Minh City
+                const lat = centerLat + (Math.random() - 0.5) * radius;
+                const lon = centerLon + (Math.random() - 0.5) * radius;
+                
+                await shipperModel.findByIdAndUpdate(shipper._id, {
+                    current_location: { lat, lon },
+                    last_location_update: new Date()
+                });
+                
+                updatedCount++;
+            } catch (error) {
+                console.log(`Error updating shipper ${shipper.shipper_id}:`, error.message);
+            }
+        }
+        
+        res.json({ 
+            success: true, 
+            message: `Randomized ${updatedCount} shipper locations`,
+            count: updatedCount
+        });
+        
+    } catch (error) {
+        console.log(error);
+        res.json({ success: false, message: "Error randomizing locations" });
+    }
+}
+
 export { 
     loginShipper, 
     registerShipper, 
@@ -303,5 +451,7 @@ export {
     getAvailableShippers,
     assignOrder,
     completeDelivery,
-    updateRating
+    updateRating,
+    generateRandomShippers,
+    randomizeShipperLocations
 };

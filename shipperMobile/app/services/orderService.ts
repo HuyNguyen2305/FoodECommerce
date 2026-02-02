@@ -144,6 +144,37 @@ export const orderService = {
   },
 
   /**
+   * Reject assigned order
+   */
+  async rejectOrder(orderId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const token = await authService.getToken();
+      if (!token) {
+        return { success: false, message: 'Not authenticated' };
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/order/shipper/reject/${orderId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        return { success: true, message: 'Order rejected' };
+      }
+
+      return { success: false, message: data.message || 'Failed to reject order' };
+    } catch (error) {
+      console.error('Reject order error:', error);
+      return { success: false, message: 'Cannot connect to server' };
+    }
+  },
+
+  /**
    * Get order details by ID
    */
   async getOrderById(orderId: string): Promise<{ success: boolean; order?: Order; message?: string }> {

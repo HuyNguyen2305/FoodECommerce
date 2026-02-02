@@ -201,11 +201,79 @@ def get_shippers():
 
 @app.route('/dispatch/generate-shippers', methods=['POST'])
 def generate_shippers_endpoint():
-    """Generate new random shippers - requires backend server"""
-    return jsonify({
-        'success': False,
-        'error': 'Shipper generation now handled by backend server. Use POST /api/shipper/register instead.'
-    }), 400
+    """Generate new random shippers via backend API"""
+    try:
+        data = request.get_json() or {}
+        count = data.get('count', 20)
+        
+        # Forward request to Node.js backend
+        import requests
+        backend_url = os.getenv('BACKEND_URL', 'http://localhost:5137')
+        
+        response = requests.post(
+            f'{backend_url}/api/shipper/generate-random',
+            json={'count': count},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                logger.info(f"Generated {result.get('count', 0)} new shippers")
+                return jsonify({
+                    'success': True,
+                    'count': result.get('count', 0),
+                    'shippers': result.get('shippers', []),
+                    'note': result.get('note', '')
+                })
+        
+        return jsonify({
+            'success': False,
+            'error': 'Failed to generate shippers via backend API'
+        }), 500
+        
+    except Exception as e:
+        logger.error(f"Error generating shippers: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/dispatch/randomize-locations', methods=['POST'])
+def randomize_locations_endpoint():
+    """Randomize all shipper locations for testing"""
+    try:
+        # Forward request to Node.js backend
+        import requests
+        backend_url = os.getenv('BACKEND_URL', 'http://localhost:5137')
+        
+        response = requests.post(
+            f'{backend_url}/api/shipper/randomize-locations',
+            json={},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                logger.info(f"Randomized {result.get('count', 0)} shipper locations")
+                return jsonify({
+                    'success': True,
+                    'count': result.get('count', 0),
+                    'message': result.get('message', '')
+                })
+        
+        return jsonify({
+            'success': False,
+            'error': 'Failed to randomize locations via backend API'
+        }), 500
+        
+    except Exception as e:
+        logger.error(f"Error randomizing locations: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 @app.route('/dispatch/assign', methods=['POST'])
 def assign_order():

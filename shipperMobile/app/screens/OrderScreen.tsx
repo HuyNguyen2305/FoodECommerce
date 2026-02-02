@@ -249,7 +249,37 @@ const OrderScreen = ({ onLogout }: OrderScreenProps) => {
       Alert.alert('Error', result.message || 'Failed to accept order');
     }
   };
-  
+
+  const handleRejectOrder = async () => {
+    if (!activeOrder) return;
+
+    Alert.alert(
+      'Reject Order',
+      'Are you sure you want to reject this order? It will be reassigned to another shipper.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            const result = await orderService.rejectOrder(activeOrder._id);
+            if (result.success) {
+              Alert.alert('Order Rejected', 'The order has been returned to the pool.');
+              setActiveOrder(null);
+              setRouteCoordinates([]);
+              loadAssignedOrders(); // Refresh orders
+            } else {
+              Alert.alert('Error', result.message || 'Failed to reject order');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const recalculateRoute = () => {
     if (activeOrder && userLocation) {
       if (routeMode === 'to_shop') {
@@ -438,9 +468,16 @@ const OrderScreen = ({ onLogout }: OrderScreenProps) => {
       {activeOrder && (
         <View style={styles.actionButtonsContainer}>
           {activeOrder.shipper_status === 'assigned' && (
-            <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptOrder}>
-              <Text style={styles.actionButtonText}>Accept Order</Text>
-            </TouchableOpacity>
+            <>
+              <View style={styles.acceptRejectContainer}>
+                <TouchableOpacity style={styles.acceptButton} onPress={handleAcceptOrder}>
+                  <Text style={styles.actionButtonText}>Accept Order</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.rejectButton} onPress={handleRejectOrder}>
+                  <Text style={styles.actionButtonText}>Reject</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
           
           {activeOrder.shipper_status === 'en_route_to_shop' && (
@@ -604,8 +641,25 @@ const styles = StyleSheet.create({
     right: 20,
     gap: 10,
   },
+  acceptRejectContainer: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   acceptButton: {
+    flex: 1,
     backgroundColor: '#34A853',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  rejectButton: {
+    flex: 1,
+    backgroundColor: '#EA4335',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',

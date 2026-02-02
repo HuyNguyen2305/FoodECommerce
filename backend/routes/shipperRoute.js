@@ -8,7 +8,9 @@ import {
     getAvailableShippers,
     assignOrder,
     completeDelivery,
-    updateRating
+    updateRating,
+    generateRandomShippers,
+    randomizeShipperLocations
 } from '../controllers/shipperController.js';
 import authMiddleware from '../middleware/auth.js';
 
@@ -28,6 +30,8 @@ shipperRouter.post('/complete-delivery', authMiddleware, completeDelivery);
 shipperRouter.get('/available', getAvailableShippers);
 shipperRouter.post('/assign-order', assignOrder);
 shipperRouter.post('/update-rating', updateRating);
+shipperRouter.post('/generate-random', generateRandomShippers); // Generate random test shippers
+shipperRouter.post('/randomize-locations', randomizeShipperLocations); // Randomize shipper positions for testing
 
 // Get all shippers (for dashboard/dispatcher)
 shipperRouter.get('/all', async (req, res) => {

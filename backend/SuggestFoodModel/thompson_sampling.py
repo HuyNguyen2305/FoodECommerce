@@ -359,9 +359,13 @@ class ThompsonSampling:
                     content_boost = self._get_content_similarity_boost(food, user_ordered_items)
                     final_score += content_boost  # ADDITIVE (not multiplicative)
                 
+                # Get GLOBAL order count (across all users, not just this user)
+                global_stats = self.db.get_interaction_stats(food_id)
+                global_order_count = global_stats.get('orders', 0)
+                
                 # Log scoring details for debugging
                 food_name = food.get('name', 'Unknown')
-                logger.info(f"[SCORE] {food_name}: ts={ts_score:.3f}, context={boost:.2f}x, user={user_history_boost:.2f}x, content=+{content_boost:.3f} → FINAL={final_score:.3f}")
+                logger.info(f"[SCORE] {food_name}: global_orders={global_order_count}, ts={ts_score:.3f}, context={boost:.2f}x, user={user_history_boost:.2f}x, content=+{content_boost:.3f} → FINAL={final_score:.3f}")
                 
                 food_scores[food_id] = {
                     'food': food,
@@ -370,22 +374,35 @@ class ThompsonSampling:
                     'context_boost': boost,
                     'user_boost': user_history_boost,
                     'order_count': user_order_count,
+                    'global_order_count': global_order_count,  # Add global order count
                     'content_boost': content_boost,
                     'random_tiebreaker': random.random()  # Random value for fair tiebreaking
                 }
             
-            # Sort by ORDER COUNT FIRST (frequency), then RANDOM for fairness
-            # This ensures frequently ordered items rank higher, but items with same order count are randomized
-            sorted_recommendations = sorted(
-                food_scores.values(), 
-                key=lambda x: (x['order_count'], x['random_tiebreaker']), 
-                reverse=True
-            )
+            # Sort recommendations based on whether user is logged in
+            if user_id:
+                # LOGGED IN: Prioritize user's personal order history
+                # Sort by USER ORDER COUNT first, then calculated score
+                sorted_recommendations = sorted(
+                    food_scores.values(), 
+                    key=lambda x: (x['order_count'], x['score'], x['random_tiebreaker']), 
+                    reverse=True
+                )
+                logger.info(f"[SORT] Personalized sorting by user order count for user {user_id}")
+            else:
+                # NEUTRAL USER: Prioritize global popularity with variety
+                # Sort by GLOBAL ORDER COUNT, then random (for variety on each reload)
+                sorted_recommendations = sorted(
+                    food_scores.values(), 
+                    key=lambda x: (x['global_order_count'], x['random_tiebreaker']), 
+                    reverse=True
+                )
+                logger.info(f"[SORT] Non-personalized sorting by global popularity with randomization")
             
             # Log top recommendations for debugging
             logger.info(f"[TOP RECS] Top {min(count, len(sorted_recommendations))} recommendations:")
             for i, item in enumerate(sorted_recommendations[:count], 1):
-                logger.info(f"  {i}. {item['food']['name']}: score={item['score']:.3f} (ts={item['ts_score']:.3f}, ctx={item['context_boost']:.2f}x, user={item.get('user_boost', 1.0):.2f}x, content=+{item['content_boost']:.3f})")
+                logger.info(f"  {i}. {item['food']['name']}: user_orders={item['order_count']}, score={item['score']:.3f}, global_orders={item['global_order_count']}")
             
             recommendations = []
             for item in sorted_recommendations[:count]:
@@ -429,12 +446,13 @@ class ThompsonSampling:
                 for item in order.get('items', []):
                     item_name = item.get('name', '').lower()
                     item_category = item.get('category', '').lower()
+                    item_quantity = item.get('quantity', 1)  # Get the quantity
                     
                     if item_name:
                         ordered_names.append(item_name)
-                        name_order_count[item_name] += 1
+                        name_order_count[item_name] += item_quantity  # Count total quantity, not just 1
                     if item_category:
-                        category_counts[item_category] += 1
+                        category_counts[item_category] += item_quantity  # Also count category by quantity
             
             food_name = food.get('name', '').lower()
             food_category = food.get('category', '').lower()
