@@ -60,3 +60,5 @@ backend/RoutingService/cache/
 # Expo
 shipperMobile/.expo/
 shipperMobile/android/build/
+
+graphify-out/
