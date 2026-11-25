@@ -89,3 +89,18 @@
         justify-content: start;
     }
 }
+@media(max-width: 750px){
+    .cart{
+        margin-top: 120px;
+    }
+    .cart-items{
+        overflow-x: auto;
+    }
+    .cart-items-title{
+        min-width: 560px;
+    }
+    .cart-total button, .cart-promocode-input button{
+        width: auto;
+        padding: 12px 16px;
+    }
+}

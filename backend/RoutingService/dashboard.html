@@ -302,10 +302,10 @@
         // Initialize map centered on Ho Chi Minh City
         const map = L.map('map').setView([10.7769, 106.7009], 12);
 
-        // Add Carto OSM tiles (same as mobile app)
-        L.tileLayer('https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+        // OSM standard tiles: Carto's rastertiles/voyager endpoint now requires an API key
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            attribution: '© OpenStreetMap contributors, © CARTO'
+            attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
         // Store markers

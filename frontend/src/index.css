@@ -9,6 +9,10 @@
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
+}
+img{
+  max-width: 100%;
 }
 a{
   text-decoration: none;
@@ -17,7 +21,13 @@ a{
 
 .app{
   width: 80%;
+  max-width: 1400px;
   margin: auto;
+}
+@media (max-width: 750px){
+  .app{
+    width: 92%;
+  }
 }
 
 @keyframes fadeIn{

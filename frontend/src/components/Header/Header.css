@@ -1,8 +1,9 @@
 .header{
-    height: 34vw;
+    width: 100%;
+    max-width: 1500px;
+    aspect-ratio: 1500 / 589;
     margin: 30px auto;
-    background: url('/header_img.png') no-repeat;
-    background-size: contain;
+    background: url('/header_img.png') no-repeat center / 100% 100%;
     position: relative;
 }
 
@@ -21,12 +22,12 @@
 .header-contents h2{
     font-weight: 500;
     color: #2C3E50;
-    font-size: max(10,5vw, 25px);
+    font-size: clamp(20px, 5vw, 64px);
 }
 
 .header-contents p{
     color: #2C3E50;
-    font-size: 2vw;
+    font-size: clamp(12px, 2vw, 24px);
 }
 
 .header-contents button{

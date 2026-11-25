@@ -7,7 +7,7 @@
 }
 .place-order-left{
     width: 100%;
-    max-width: max(30%, 500px);
+    max-width: max(30%, min(500px, 100%));
 }
 .place-order-left .title{
     font-size: 30px;
@@ -28,8 +28,21 @@
 }
 .place-order-right{
     width: 100%;
-    max-width: max(40%, 500px);
+    max-width: max(40%, min(500px, 100%));
 }
 .place-order .cart-total button{
     margin-top: 30px;
+}
+@media (max-width: 900px){
+    .place-order{
+        flex-direction: column;
+        margin-top: 40px;
+        gap: 30px;
+    }
+    .place-order-left, .place-order-right{
+        max-width: 100%;
+    }
+    .place-order-left .multi-fields{
+        flex-wrap: wrap;
+    }
 }

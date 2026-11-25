@@ -50,6 +50,6 @@
 @media (max-width: 1050px){
     .explore-menu-text{
         max-width: 100%;
-        font-size: 40px;
+        font-size: clamp(14px, 2.5vw, 20px);
     }
 }

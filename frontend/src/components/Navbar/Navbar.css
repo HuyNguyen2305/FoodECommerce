@@ -3,6 +3,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .navbar.logo{
@@ -131,5 +133,18 @@
 @media (max-width: 750px){
     .navbar-menu{
         display: none;
+    }
+}
+
+@media (max-width: 480px){
+    .navbar .logo{
+        width: 90px;
+    }
+    .navbar-right{
+        gap: 12px;
+    }
+    .navbar-right button{
+        padding: 6px 14px;
+        font-size: 13px;
     }
 }
